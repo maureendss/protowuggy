@@ -8,7 +8,9 @@ import pandas as pd
 from tqdm import tqdm
 import num2words
 import ipapy
-
+from collections import defaultdict
+import pickle
+import os
 
 def convert_num_to_words(utterance, language_code = 'en'):
       utterance = ' '.join([num2words.num2words(i, lang=language_code) if i.isdigit() else i for i in utterance.split()])
@@ -59,44 +61,11 @@ def word_statistics(phrases):
     for sent in phrases:
         counts.update(nltk.ngrams(nltk.tokenize.word_tokenize(sent), 2))
 
-
-
-# def phoneme_statistics(phonemised_phrases, wordbounds=True):
-
-#     if wordbounds: #one item is one boundary. Don"t care about utterances anymore
-#         phrases = []
-#         for utt in phonemised_phrases:
-#             for x in utt.split('/w'):
-#                 if x.strip():
-#                     phrases.append(x.strip())
-
-#     else:
-#         phrases = []
-#         for utt in phonemised_phrases:
-#             x = utt.replace('/w ', '')
-#             phrases.append(x.strip())
-                
         
-#     all_counts = dict()
-#     for size in [2,3,4,5,6]:
-#         counts = nltk.FreqDist()
-#         for sent in phrases:
-#             counts.update(nltk.ngrams(nltk.tokenize.word_tokenize(sent), size))
-#         all_counts[size]=counts
-#     #find a way to get the syllables
-#     return all_counts
-
-
 def phoneme_statistics(phonemised_phrases):
 
-    # #if wordbound
-    # n = 4
-    # for sent in phrases :
-    #     for i in range(len(sent)-n+1):
-    #         counts.update(sent[i:i+n])
-        
     all_counts = dict()
-    for size in [3,4,5,6,7, 8, 9]:
+    for size in [3,4,5,6,7, 8, 9, 10]:
         counts = nltk.FreqDist()
         for sent in phonemised_phrases:
             counts.update(nltk.ngrams(nltk.tokenize.word_tokenize(sent), size))
@@ -112,9 +81,10 @@ def get_valid_ngrams(phoneme_count_dict, syllable_list=['V', 'CV', 'VC', 'CVC', 
 
     for size in phoneme_count_dict.keys() :
         for k,v in phoneme_count_dict[size].items():
+
             if k[0] == '/w' and k[-1] == '/w' and k.count('/w') == 2 :
                 #That means that  word boundaires on both sides and not in middle, we can create a real word.
-                seg = k[1:-2]
+                seg = k[1:-1]
                 struct = [get_phone_desc(x) for x in seg]
                 if None in struct:
                     continue
@@ -123,10 +93,17 @@ def get_valid_ngrams(phoneme_count_dict, syllable_list=['V', 'CV', 'VC', 'CVC', 
 
                     for x in potential:
                         p_struct=x[0]
-                        p_seg=seg[0:x[1]],seg[x[1]:] 
-                        w.append((p_seg, p_struct,v)) 
+                        n1=seg[0:x[1]]
+                        n2=seg[x[1]:]
 
-            
+                        form=' '.join([' '.join(n1), ' '.join(n2)])
+                        form_bound=' '.join(k)
+                        s = " | ".join([" ".join(p_struct[0])," ".join(p_struct[1])])
+                        sy=" | ".join([" ".join(n1)," ".join(n2)])
+                        w.append((form, form_bound, sy, s,v))
+                        
+                        
+                            
             elif k.count('/w') == 1 and  k[0] != '/w' and k[-1] != '/w':
                 
                 struct = [get_phone_desc(x) for x in k]
@@ -139,7 +116,13 @@ def get_valid_ngrams(phoneme_count_dict, syllable_list=['V', 'CV', 'VC', 'CVC', 
                     n1 = k[0:idx] 
                     n2 = k[idx+1:]
                     seg = (n1, n2)
-                    nw.append(((n1,n2), (struct[0:idx], struct[idx+1:]), v))
+
+                    form=' '.join([' '.join(n1), ' '.join(n2)])
+                    form_bound=' '.join(k)
+
+                    sy=" | ".join([" ".join(n1)," ".join(n2)])
+                    s = " | ".join([" ".join(struct[0:idx])," ".join(struct[idx+1:])]) 
+                    nw.append((form, form_bound, sy, s, v))
 
                 
                 
@@ -148,7 +131,7 @@ def get_valid_ngrams(phoneme_count_dict, syllable_list=['V', 'CV', 'VC', 'CVC', 
             else:
                 continue
 
-    col=['segments', 'structure', 'count']
+    col=['form', 'form_bound','syll', 'structure', 'count']
     w_df = pd.DataFrame(w)
     nw_df = pd.DataFrame(nw)
 
@@ -157,53 +140,76 @@ def get_valid_ngrams(phoneme_count_dict, syllable_list=['V', 'CV', 'VC', 'CVC', 
     nw_df.columns=col
 
     return w_df, nw_df
-    # return w, nw
+# return w, nw
 
 
-
-# def get_syllables(phon_phrase):
-#     '''phon_phraserase: string
-#     We consider a syllable is either consonant(s) + vowel(s) or vowel + consonant
-#     or that tehy are cut by word boundaries - ??
-#     FOllowing these syllabification rules : 
-#     V CV VC CVC CCV CCCV CVCC'''
-
-#     phones = phon_phrase.strip().split(' ')
-#     phones_type = [get_phone_desc(x) for x in phones]
-#     syllables = []
-#     i=0
-    
-#     while i < len(phon_phrase):
-#         start = i
-#         bound = False
-#         while bound = False:
-
-#             if phones[i] == "/w":
-#                 i+=1
-#                 bound=true
-
-#             #V
-#             if phones_type[i] == "V" and phones[i+1] == "/w":
-#                 i+=2
-#                 bound=true
-
-#             #CV
-#             if phones_type[i] == "C" and phones_type[i+1] == "V" and phones[i+2] == "/w":
-#                 i+=3
-#                 bound=true
-                
+def match_w_nw(w_df, nw_df,n_perc=1):
+    #match words and non words. 
+    #1. get all common structures in w/nw
+    w_struct = []
+    nw_struct=[]
+    for x in w_df['structure']:
+        if x not in w_struct:
+            w_struct.append(x)
+    for x in nw_df['structure']:
+        if x not in nw_struct:
+            nw_struct.append(x)
 
             
-#         if start != end:
-#             syllables.append[phon_phrase[start:i]
-        
-      
+    common_struct = [x for x in w_struct if x in nw_struct]
+    print("{} potential syllable structures".format(len(common_struct)))
+
+    #Trimming the dfs so that we can do our matches
+    cond = w_df['form'].isin(nw_df['form'])
+    w_df = w_df.drop(w_df[cond].index, inplace = False)
+    cond = nw_df['form'].isin(w_df['form'])
+    nw_df = nw_df.drop(nw_df[cond].index, inplace = False)
+    
+
+    #2. If form is same in both word and non word, remive!
+    #2. for item in ..., get item of other
+    #only do if same conosonant. 
+
+    #threshold = n_freq of word_boundaries eg the lowest count of the hif=ghest 1% of words, regardless of structure
+
+    hf_threshold = int(get_n_freq_phrases(w_df, n_perc=n_perc).tail(1)['count'])
+    lf_threshold = int(get_n_freq_phrases(w_df,n_perc=n_perc, direction = "low").tail(1)['count'])
+    
+    high_freq = defaultdict(dict)
+    
+    low_freq=defaultdict(dict) 
+    for structure in common_struct:
+        high_freq[structure]=defaultdict(dict)
+        low_freq[structure]=defaultdict(dict)
+
+        w_tmp_df = w_df[w_df['structure'] == structure]
+        nw_tmp_df = nw_df[nw_df['structure'] == structure]
+        if len(w_tmp_df[w_tmp_df['count']>=hf_threshold])>1 and len(nw_tmp_df[nw_tmp_df['count']>=hf_threshold])>1 and len(w_tmp_df[w_tmp_df['count']>=lf_threshold])>1 and len(nw_tmp_df[nw_tmp_df['count']>=lf_threshold])>1 :
+            high_freq[structure]['w'] = w_tmp_df[w_tmp_df['count']>=hf_threshold]
+            high_freq[structure]['nw'] = nw_tmp_df[nw_tmp_df['count']>=hf_threshold]
+            low_freq[structure]['w'] = w_tmp_df[w_tmp_df['count']>=lf_threshold]
+            low_freq[structure]['nw'] = nw_tmp_df[nw_tmp_df['count']>=lf_threshold]
+
+    #prune empty keys
+    hf = dict( [(k,v) for k,v in high_freq.items() if len(v)>0])
+    lf=dict( [(k,v) for k,v in low_freq.items() if len(v)>0])
+
+    return hf,lf
+    
+
+def get_n_freq_phrases(df, n_perc=1, direction="high"):
+    # if direction is low, and n_perc = 1, then we take the 1% less frequent
+
+    #n is dependent on length of dataset
+    n=int(round(n_perc*len(df)/100))
+    if direction == "high":
+        n_freq = df.sort_values(by=["count"], ascending=False).head(n)
+    elif direction =="low":
+        n_freq = df.sort_values(by=["count"], ascending=True).head(n)
+    return n_freq
 
     
-    
-
-#def get_phoneme_boundaries:
-
+#--UTILS--------------------------------------------------------------------------
 
 def get_phone_desc(phone_string):
     if phone_string == '/w':
@@ -230,36 +236,58 @@ def find_syllable_split(l,syllable_list=['V', 'CV', 'VC', 'CVC', 'CCV', 'CCCV', 
         if ''.join(n1) in syllable_list and ''.join(n2) in syllable_list:
             yield ((n1, n2), i)
         
-# def split_list_into_list(l, l_separator):
-#     # using list comprehension + zip() + slicing + enumerate()
-#     # Split list into lists by particular value
-#     size = len(l)
-#     idx_list = [idx + 1 for idx, val in enumerate(l) if val == l_separator]
-#     res = [l[i: j-1] for i, j in zip([0] + idx_list, idx_list + ([size+1] if idx_list[-1] != size else [size])) if len(l[i: j-1])>0]
-
-#     return res
-
-
-#def split_structure(list):
-    
-#works if i can split the string into two structures following the ... . :
-## V CV VC CVC CCV CCCV CVCC
-
-                        
+                       
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
     parser.add_argument("text_file", help="path to the input text file")
-    parser.add_argument("n_job", help="number of jobs for phonemizer", default=1)
-    pars.add_argument(language_code, default='en-us')
+    parser.add_argument('output_dir')
+    parser.add_argument("--n_job", help="number of jobs for phonemizer", default=50)
+    parser.add_argument("--language_code", default='en-us')
+    
     parser.parse_args()
     args, leftovers = parser.parse_known_args()
 
+    print("creating output dir in {}".format(args.output_dir))
+    if not os.path.isdir(args.output_dir):
+        os.mkdir(args.output_dir)
+        
+    if not os.path.isfile(os.path.join(args.output_dir, 'phrases.pkl')):
+        print("....Loading text")
+        phrases = text_to_phrases(args.text_file, language_code=args.language_code)
+        with open(os.path.join(args.output_dir, 'phrases.pkl'), 'w') as outfile:
+            pickle.dump(phrases, outfile)
+    else:
+        with open(os.path.join(args.output_dir, 'phrases.pkl'), 'r') as f:
+            phrases = pickle.load(f)
 
 
+            
+    if not os.path.isfile(os.path.join(args.output_dir, 'phon_phrases.pkl')):
+        print("...phonemizing phrases")
+        phon_phrases = phonemize_phrases(phrases, language_code=args.language_code, njobs=args.n_job)
+        print('...done with phonemization')
+        with open(os.path.join(args.output_dir, 'phon_phrases.pkl'), 'w') as outfile:
+            pickle.dump(phon_phrases, outfile)
+    else:
+        with open(os.path.join(args.output_dir, 'phon_phrases.pkl'), 'r') as f:
+            phon_phrases = pickle.load(f)
+
+    phon_dict = phoneme_statistics(phon_phrases)
+    w_df, nw_df = get_valid_ngrams(phon_dict)
+    hf, lf = match_w_nw(w_df, nw_df)
+
+    with open(os.path.join(args.output_dir, 'stats.pkl'), 'w') as f:
+        pickle.dump([phon_dict, (w_df, nw_df), (hf, lf)], outfile)
+    # shoudl cat all text into one.
+
+    #
     #phrases = text_to_phrases('tmp.txt', language_code='fr-fr')
     # phon_phrases = phonemize_phrases(phrases, language_code='fr-fr', njobs=8)
     #phon_dict = phoneme_statistics(phon_phrases)
     #w_df, nw_df = get_valid_ngrams(phon_dict)
+    # hf, lf = match_w_nw(w_df, nw_df)
 
+
+    #find /gpfsscratch/rech/cfs/commun/dataset/text/EN/LibriVox/ -type f  -exec cat {} + > $SCRATCH/all_EN.txt
