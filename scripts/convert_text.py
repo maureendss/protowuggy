@@ -103,18 +103,18 @@ def get_valid_ngrams(phoneme_count_dict, syllable_list=['V', 'CV', 'VC', 'CVC', 
                         w.append((form, form_bound, sy, s,v))
                         
                         
-                            
-            elif k.count('/w') == 1 and  k[0] != '/w' and k[-1] != '/w':
+            #below means that nonwords with boundaries on both side                
+            elif k.count('/w') == 3 and  k[0] == '/w' and k[-1] == '/w':
                 
-                struct = [get_phone_desc(x) for x in k]
-                if None in struct:
+                struct = [get_phone_desc(x) for x in k[1:-1]]
+                if None in struct :
                     continue #don't care when problems inphones 
                 idx = [idx for idx, val in enumerate(struct) if val == "BOUND"][0]
 
                 
                 if ''.join(struct[0:idx]) in syllable_list and ''.join(struct[idx+1:]) in syllable_list :
-                    n1 = k[0:idx] 
-                    n2 = k[idx+1:]
+                    n1 = k[1:idx+1] 
+                    n2 = k[idx+2:-1]
                     seg = (n1, n2)
 
                     form=' '.join([' '.join(n1), ' '.join(n2)])
@@ -124,10 +124,53 @@ def get_valid_ngrams(phoneme_count_dict, syllable_list=['V', 'CV', 'VC', 'CVC', 
                     s = " | ".join([" ".join(struct[0:idx])," ".join(struct[idx+1:])]) 
                     nw.append((form, form_bound, sy, s, v))
 
+            #else boundary on no side 
+            elif k.count('/w') == 1 and  k[0] != '/w' and k[-1] != '/w':
                 
+                struct = [get_phone_desc(x) for x in k[1:-1]]
+                if None in struct :
+                    continue #don't care when problems inphones 
+                idx = [idx for idx, val in enumerate(struct) if val == "BOUND"][0]
+
                 
+                if ''.join(struct[0:idx]) in syllable_list and ''.join(struct[idx+1:]) in syllable_list :
+                    n1 = k[1:idx+1] 
+                    n2 = k[idx+2:-1]
+                    seg = (n1, n2)
+
+                    form=' '.join([' '.join(n1), ' '.join(n2)])
+                    form_bound=' '.join(k[1:-1])
+
+                    sy=" | ".join([" ".join(n1)," ".join(n2)])
+                    s = " | ".join([" ".join(struct[0:idx])," ".join(struct[idx+1:])]) 
+                    nw.append((form, form_bound, sy, s, v))
+
+
+            elif k.count('/w') == 2 and  k[1:-1].count('/w') == 1:
+                #if only on one side there's a word boundary :
                 #That means we can create a protoword
-                pass
+
+                struct = [get_phone_desc(x) for x in k[1:-1]]
+                if None in struct :
+                    continue
+                idx = [idx for idx, val in enumerate(struct) if val == "BOUND"][0]
+                if ''.join(struct[0:idx]) in syllable_list and ''.join(struct[idx+1:]) in syllable_list :
+                    n1 = k[1:idx+1] 
+                    n2 = k[idx+2:-1]
+                    seg = (n1, n2)
+
+                    form=' '.join([' '.join(n1), ' '.join(n2)])
+
+                    if k[0] == '/w': 
+                        form_bound=' '.join(k[0:-1])
+                    elif k[-1] == '/w':
+                        form_bound=' '.join(k[1:])
+
+                    sy=" | ".join([" ".join(n1)," ".join(n2)])
+                    s = " | ".join([" ".join(struct[0:idx])," ".join(struct[idx+1:])]) 
+                    nw.append((form, form_bound, sy, s, v))
+                
+
             else:
                 continue
 
