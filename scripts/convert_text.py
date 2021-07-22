@@ -32,11 +32,11 @@ def text_to_phrases(text, language_code='en-us'):
 
 
 
-def phonemize_phrases(phrases, language_code='en-us', njobs=4):
+def phonemize_phrases(phrases, language_code='en-us', njobs=4, language_switch="remove-flags"):
 
     # phon = phonemize(phrases,language=language_code, backend='espeak', language_switch = 'remove-flags', njobs=njobs)
     sep = separator.Separator(phone=' ', syllable='', word='/w ')
-    phon = phonemize(phrases,language=language_code, backend='espeak', language_switch = 'remove-flags', separator = sep,  njobs=njobs) # here with word separator and space between phone
+    phon = phonemize(phrases,language=language_code, backend='espeak', language_switch = language_switch, separator = sep,  njobs=njobs) # here with word separator and space between phone
 
     if len(phrases) != len(phon):
         raise ValueError("Length of input phrases and output phonemised phrases differ")
@@ -259,7 +259,7 @@ if __name__ == "__main__":
         with open(os.path.join(args.output_dir, 'phrases.pkl'), 'w') as outfile:
             pickle.dump(phrases, outfile)
     else:
-        with open(os.path.join(args.output_dir, 'phrases.pkl'), 'r') as f:
+        with open(os.path.join(args.output_dir, 'phrases.pkl'), 'rb') as f:
             phrases = pickle.load(f)
 
 
@@ -268,17 +268,17 @@ if __name__ == "__main__":
         print("...phonemizing phrases")
         phon_phrases = phonemize_phrases(phrases, language_code=args.language_code, njobs=args.n_job)
         print('...done with phonemization')
-        with open(os.path.join(args.output_dir, 'phon_phrases.pkl'), 'w') as outfile:
+        with open(os.path.join(args.output_dir, 'phon_phrases.pkl'), 'wb') as outfile:
             pickle.dump(phon_phrases, outfile)
     else:
-        with open(os.path.join(args.output_dir, 'phon_phrases.pkl'), 'r') as f:
+        with open(os.path.join(args.output_dir, 'phon_phrases.pkl'), 'rb') as f:
             phon_phrases = pickle.load(f)
 
     phon_dict = phoneme_statistics(phon_phrases)
     w_df, nw_df = get_valid_ngrams(phon_dict)
     hf, lf = match_w_nw(w_df, nw_df)
 
-    with open(os.path.join(args.output_dir, 'stats.pkl'), 'w') as f:
+    with open(os.path.join(args.output_dir, 'stats.pkl'), 'wb') as f:
         pickle.dump([phon_dict, (w_df, nw_df), (hf, lf)], outfile)
     # shoudl cat all text into one.
 
