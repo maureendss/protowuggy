@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-from phonemizer import phonemize
-from phonemizer import separator
 import nltk
 import re
 import pandas as pd
@@ -12,39 +10,18 @@ from collections import defaultdict
 import pickle
 import os
 
-def convert_num_to_words(utterance, language_code = 'en'):
-      utterance = ' '.join([num2words.num2words(i, lang=language_code) if i.isdigit() else i for i in utterance.split()])
-      return utterance
-
-    #normalise digits, 
 
 
-def text_to_phrases(text, language_code='en-us'):
-    # Turn text into phrases based on punctuation and lines.
-    # TODO : MDS - take care of unicode. 
-    punc_separators = '[;:,.!?¡¿—…"«»“”]'
-    phrases = []
-    with open(text, 'r', encoding="utf-8") as infile:
-        for l in infile :
-            phrases.extend([convert_num_to_words(p, language_code = language_code) for p in re.split(punc_separators, l.strip()) if checkString(p)]) #check not empty
-    return phrases
-
-
-
-
-def phonemize_phrases(phrases, language_code='en-us', njobs=4, language_switch="remove-flags"):
-
-    # phon = phonemize(phrases,language=language_code, backend='espeak', language_switch = 'remove-flags', njobs=njobs)
-    sep = separator.Separator(phone=' ', syllable='', word='/w ')
-    phon = phonemize(phrases,language=language_code, backend='espeak', language_switch = language_switch, separator = sep,  njobs=njobs) # here with word separator and space between phone
-
-    if len(phrases) != len(phon):
-        raise ValueError("Length of input phrases and output phonemised phrases differ")
-    return phon
-
-
-#def simplify_phones
-
+#---------------- utils
+def r_form(row):
+    if row['form_bound'].count('/w')==1:
+        val = "no_bound"
+    elif row['form_bound'].count('/w')==2:
+        val = "one_bound"
+    elif row['form_bound'].count('/w')==3:
+        val = "two_bound"
+    return val
+#--------------------------------
 
 
 def word_statistics(phrases):
@@ -65,7 +42,7 @@ def word_statistics(phrases):
 def phoneme_statistics(phonemised_phrases):
 
     all_counts = dict()
-    for size in [3,4,5,6,7, 8, 9, 10]:
+    for size in tqdm([3,4,5,6,7, 8, 9, 10]):
         counts = nltk.FreqDist()
         for sent in phonemised_phrases:
             counts.update(nltk.ngrams(nltk.tokenize.word_tokenize(sent), size))
@@ -218,8 +195,7 @@ def match_w_nw(w_df, nw_df,n_perc=1):
     hf_threshold = int(get_n_freq_phrases(w_df, n_perc=n_perc).tail(1)['count'])
     lf_threshold = int(get_n_freq_phrases(w_df,n_perc=n_perc, direction = "low").tail(1)['count'])
     
-    high_freq = defaultdict(dict)
-    
+    high_freq = defaultdict(dict)    
     low_freq=defaultdict(dict) 
     for structure in common_struct:
         high_freq[structure]=defaultdict(dict)
@@ -278,13 +254,17 @@ def find_syllable_split(l,syllable_list=['V', 'CV', 'VC', 'CVC', 'CCV', 'CCCV', 
         n2=l[i:]
         if ''.join(n1) in syllable_list and ''.join(n2) in syllable_list:
             yield ((n1, n2), i)
-        
+
+def filter_df(df):
+      #keep only those where allphones in phone list
+      #should we remove the words from foreinbg?
+      return df[~df["external_phones"].astype(bool)]
                        
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("text_file", help="path to the input text file")
+    parser.add_argument("df_pickle", help="df in pickle format from processing")
     parser.add_argument('output_dir')
     parser.add_argument("--n_job", help="number of jobs for phonemizer", default=50)
     parser.add_argument("--language_code", default='en-us')
@@ -292,31 +272,14 @@ if __name__ == "__main__":
     parser.parse_args()
     args, leftovers = parser.parse_known_args()
 
-    print("creating output dir in {}".format(args.output_dir))
+    with open(df_pickle, 'rb') as infile:
+          df = pickle.load(infile)
+
+
     if not os.path.isdir(args.output_dir):
-        os.mkdir(args.output_dir)
+          print("creating output dir in {}".format(args.output_dir))
+          os.mkdir(args.output_dir)
         
-    if not os.path.isfile(os.path.join(args.output_dir, 'phrases.pkl')):
-        print("....Loading text")
-        phrases = text_to_phrases(args.text_file, language_code=args.language_code)
-        with open(os.path.join(args.output_dir, 'phrases.pkl'), 'w') as outfile:
-            pickle.dump(phrases, outfile)
-    else:
-        with open(os.path.join(args.output_dir, 'phrases.pkl'), 'rb') as f:
-            phrases = pickle.load(f)
-
-
-            
-    if not os.path.isfile(os.path.join(args.output_dir, 'phon_phrases.pkl')):
-        print("...phonemizing phrases")
-        phon_phrases = phonemize_phrases(phrases, language_code=args.language_code, njobs=args.n_job)
-        print('...done with phonemization')
-        with open(os.path.join(args.output_dir, 'phon_phrases.pkl'), 'wb') as outfile:
-            pickle.dump(phon_phrases, outfile)
-    else:
-        with open(os.path.join(args.output_dir, 'phon_phrases.pkl'), 'rb') as f:
-            phon_phrases = pickle.load(f)
-
     phon_dict = phoneme_statistics(phon_phrases)
     w_df, nw_df = get_valid_ngrams(phon_dict)
     hf, lf = match_w_nw(w_df, nw_df)
