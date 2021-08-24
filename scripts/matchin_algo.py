@@ -16,8 +16,8 @@ class MatchingWords():
         self.pool_nw = nw_df.reset_index().rename(columns={'index': 'pool_index'})
         self.match_nw = pd.DataFrame(columns=self.pool_nw.columns)
 
-        output_dirname = os.path.dirname(out_csv)
-        print("output dirname is', output_dirname)
+        output_dirname = os.path.dirname(os.path.abspath(out_csv))
+        print("output dirname is", output_dirname)
         if not os.path.isdir(output_dirname):
             os.makedirs(output_dirname, exist_ok=True)
 
