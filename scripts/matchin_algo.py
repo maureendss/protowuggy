@@ -11,17 +11,31 @@ class MatchingWords():
     """A class for the pool from which we will subsample data
     Note: There will be an English and a French pool"""
 
-    def __init__(self, w_df, nw_df, log_every=10):
+    def __init__(self, w_df, nw_df, out_csv):
         self.words = w_df
-
         self.pool_nw = nw_df.reset_index().rename(columns={'index': 'pool_index'})
         self.match_nw = pd.DataFrame(columns=self.pool_nw.columns)
-        self.log_every  = log_every
 
         self.rand_init_nw()
 
-        self.prec_loss = self.freq_loss()
+        self.prec_loss = sys.float_info.max
         self.loss = None
+
+        output_dirname = os.path.dirname(out_csv)
+        if not os.path.isdir(output_dirname):
+            os.makedirs(output_dirname, exist_ok=True)
+
+        self.log_file = os.path.join(output_dirname, "annealing_log.csv")
+        self.init_logs()
+        self.out_file = out_csv
+        self.log_every = 1
+
+    def init_logs(self):
+        # we first empty log file
+        open(self.log_file, 'w').close()
+        # and then write header
+        with open(self.log_file, 'a') as fin:
+            fin.write("iter,nb_accepted_moves,distance_loss")
 
     def rand_init_nw(self):
         "Randomly initialises  non words with the words df. - based on syllable structure"
@@ -50,7 +64,6 @@ class MatchingWords():
                 no_structure = False
 
         row_frompool = self.pool_nw[self.pool_nw["structure"] == structure].sample(1)
-
 
         self.pool_nw = self.pool_nw.drop(row_frompool.index)
         self.match_nw = self.match_nw.drop(row_frommatch.index)
@@ -83,7 +96,7 @@ class MatchingWords():
 
     def freq_loss(self):
         loss = self.euclidean_distance(self.match_nw["count"], self.words["count"])
-        #return loss/self.nb_spkr_norm #what is this?
+        # return loss/self.nb_spkr_norm #what is this?
         return loss
 
     def run_sim_annealing(self, n_iter):
@@ -104,10 +117,12 @@ class MatchingWords():
                 nb_accepted_moves += 1
 
             if nb_accepted_moves % self.log_every == 0:
-                #self.write_logs(loss_details, iter, nb_accepted_moves)
-                #self.write_logs(loss, iter, nb_accepted_moves)
-                print(iter, loss)
-
-
+                self.write_logs(self.prec_loss, iter, nb_accepted_moves)
         return self.loss
+
+    def write_logs(self, loss, iter, nb_accepted_moves):
+        # Header is :
+        # iter,nb_accepted_moves,loss
+        with open(self.log_file, 'a') as fin:
+            fin.write(",".join(map(str, [iter, nb_accepted_moves, loss]))+'\n')
 
