@@ -32,7 +32,6 @@ class MatchingWords():
         self.rand_init_nw()
 
         self.prec_loss = sys.float_info.max
-        self.loss = None
 
 
 
@@ -100,7 +99,7 @@ class MatchingWords():
         return np.sum(np.where(p != 0, p * np.log(p / q), 0))
 
 
-    def freq_loss(self):
+    def loss(self):
         loss = self.euclidean_distance(self.match_nw["count"], self.words["count"])
         # return loss/self.nb_spkr_norm #what is this?
         return loss
@@ -124,7 +123,7 @@ class MatchingWords():
 
             if nb_accepted_moves % self.log_every == 0:
                 self.write_logs(self.prec_loss, iter, nb_accepted_moves)
-        return self.loss
+        return self.loss()
 
     def write_logs(self, loss, iter, nb_accepted_moves):
         # Header is :
