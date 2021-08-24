@@ -16,19 +16,25 @@ class MatchingWords():
         self.pool_nw = nw_df.reset_index().rename(columns={'index': 'pool_index'})
         self.match_nw = pd.DataFrame(columns=self.pool_nw.columns)
 
-        self.rand_init_nw()
-
-        self.prec_loss = sys.float_info.max
-        self.loss = None
-
         output_dirname = os.path.dirname(out_csv)
+        print("output dirname is', output_dirname)
         if not os.path.isdir(output_dirname):
             os.makedirs(output_dirname, exist_ok=True)
+
+        print("Initialising logs")
 
         self.log_file = os.path.join(output_dirname, "annealing_log.csv")
         self.init_logs()
         self.out_file = out_csv
         self.log_every = 1
+
+        print("Randomly initialising the proto-words matched")
+        self.rand_init_nw()
+
+        self.prec_loss = sys.float_info.max
+        self.loss = None
+
+
 
     def init_logs(self):
         # we first empty log file
@@ -107,7 +113,7 @@ class MatchingWords():
             made_move = self.make_move()
 
             # Compute loss and decide if move should be revert or not
-            curr_loss, loss_details = self.loss()
+            curr_loss = self.loss()
             if curr_loss > self.prec_loss:
                 # We revert move, prec_loss is not updated
                 self.revert_move(made_move)
